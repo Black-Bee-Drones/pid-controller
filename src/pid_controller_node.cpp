@@ -13,7 +13,7 @@ PIDControllerNode::PIDControllerNode(const rclcpp::NodeOptions& node_options) : 
   p_gain_desc.floating_point_range.resize(1);
   p_gain_desc.floating_point_range[0].from_value = 0.0;
   p_gain_desc.floating_point_range[0].to_value = 10.0;
-  p_gain_desc.floating_point_range[0].step = 0.001;
+  p_gain_desc.floating_point_range[0].step = 0.0001;
 
   rcl_interfaces::msg::ParameterDescriptor i_gain_desc;
   i_gain_desc.name = "i_gain";
@@ -22,7 +22,7 @@ PIDControllerNode::PIDControllerNode(const rclcpp::NodeOptions& node_options) : 
   i_gain_desc.floating_point_range.resize(1);
   i_gain_desc.floating_point_range[0].from_value = 0.0;
   i_gain_desc.floating_point_range[0].to_value = 10.0;
-  i_gain_desc.floating_point_range[0].step = 0.001;
+  i_gain_desc.floating_point_range[0].step = 0.0001;
 
   rcl_interfaces::msg::ParameterDescriptor d_gain_desc;
   d_gain_desc.name = "d_gain";
@@ -31,7 +31,7 @@ PIDControllerNode::PIDControllerNode(const rclcpp::NodeOptions& node_options) : 
   d_gain_desc.floating_point_range.resize(1);
   d_gain_desc.floating_point_range[0].from_value = 0.0;
   d_gain_desc.floating_point_range[0].to_value = 10.0;
-  d_gain_desc.floating_point_range[0].step = 0.001;
+  d_gain_desc.floating_point_range[0].step = 0.0001;
 
   rcl_interfaces::msg::ParameterDescriptor output_min_desc;
   output_min_desc.name = "output_min";
@@ -40,7 +40,7 @@ PIDControllerNode::PIDControllerNode(const rclcpp::NodeOptions& node_options) : 
   output_min_desc.floating_point_range.resize(1);
   output_min_desc.floating_point_range[0].from_value = -100.0;
   output_min_desc.floating_point_range[0].to_value = 0.0;
-  output_min_desc.floating_point_range[0].step = 0.01;
+  output_min_desc.floating_point_range[0].step = 0.001;
 
   rcl_interfaces::msg::ParameterDescriptor output_max_desc;
   output_max_desc.name = "output_max";
@@ -49,7 +49,7 @@ PIDControllerNode::PIDControllerNode(const rclcpp::NodeOptions& node_options) : 
   output_max_desc.floating_point_range.resize(1);
   output_max_desc.floating_point_range[0].from_value = 0.0;
   output_max_desc.floating_point_range[0].to_value = 100.0;
-  output_max_desc.floating_point_range[0].step = 0.01;
+  output_max_desc.floating_point_range[0].step = 0.001;
 
   rcl_interfaces::msg::ParameterDescriptor integral_min_desc;
   integral_min_desc.name = "integral_min";
