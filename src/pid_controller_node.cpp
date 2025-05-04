@@ -69,15 +69,6 @@ PIDControllerNode::PIDControllerNode(const rclcpp::NodeOptions& node_options) : 
   integral_max_desc.floating_point_range[0].to_value = 100.0;
   integral_max_desc.floating_point_range[0].step = 0.01;
 
-  rcl_interfaces::msg::ParameterDescriptor publish_rate_desc;
-  publish_rate_desc.name = "publish_rate";
-  publish_rate_desc.type = rcl_interfaces::msg::ParameterType::PARAMETER_DOUBLE;
-  publish_rate_desc.description = "Control loop rate in Hz";
-  publish_rate_desc.floating_point_range.resize(1);
-  publish_rate_desc.floating_point_range[0].from_value = 1.0;
-  publish_rate_desc.floating_point_range[0].to_value = 100.0;
-  publish_rate_desc.floating_point_range[0].step = 1.0;
-
   // Basic descriptors for other parameters
   rcl_interfaces::msg::ParameterDescriptor auto_start_desc;
   auto_start_desc.name = "auto_start";
@@ -103,7 +94,6 @@ PIDControllerNode::PIDControllerNode(const rclcpp::NodeOptions& node_options) : 
   this->declare_parameter("pid_enable_topic", "pid_enable");
   this->declare_parameter("auto_start", true, auto_start_desc);
   this->declare_parameter("reverse_action", false, reverse_action_desc);
-  this->declare_parameter("publish_rate", 20.0, publish_rate_desc);
 
   // Initialize PID controller with parameters
   init_controller();
@@ -127,11 +117,6 @@ PIDControllerNode::PIDControllerNode(const rclcpp::NodeOptions& node_options) : 
   auto_mode_ = this->get_parameter("auto_start").as_bool();
   reverse_action_ = this->get_parameter("reverse_action").as_bool();
 
-  // Create timer for controller updates
-  double publish_rate = this->get_parameter("publish_rate").as_double();
-  timer_ = this->create_wall_timer(std::chrono::milliseconds(static_cast<int>(1000.0 / publish_rate)),
-                                   std::bind(&PIDControllerNode::control_loop, this));
-
   // Set up parameter change callback
   params_callback_handle_ = this->add_on_set_parameters_callback(
       std::bind(&PIDControllerNode::parameters_callback, this, std::placeholders::_1));
@@ -141,6 +126,7 @@ PIDControllerNode::PIDControllerNode(const rclcpp::NodeOptions& node_options) : 
   RCLCPP_INFO(this->get_logger(), "Listening on topics: %s (state), %s (setpoint), %s (enable)", state_topic.c_str(),
               setpoint_topic.c_str(), pid_enable_topic.c_str());
   RCLCPP_INFO(this->get_logger(), "Publishing to: %s (control_effort)", control_effort_topic.c_str());
+  RCLCPP_INFO(this->get_logger(), "Control will be calculated on each new state message");
 }
 
 void PIDControllerNode::init_controller()
@@ -162,17 +148,55 @@ void PIDControllerNode::init_controller()
 void PIDControllerNode::state_callback(const std_msgs::msg::Float64::SharedPtr msg)
 {
   current_state_ = msg->data;
+  RCLCPP_INFO(this->get_logger(), "Received state value: %.4f", msg->data);
+
+  // Marcar que recebemos pelo menos um valor de estado
   has_received_state_ = true;
+
+  // Executar controle somente se estiver habilitado e tivermos recebido um setpoint
+  if (auto_mode_ && has_received_setpoint_)
+  {
+    // Calcular control output
+    double control_effort = pid_controller_->update(current_state_);
+
+    // Aplicar reverse action se configurado
+    if (reverse_action_)
+    {
+      control_effort = -control_effort;
+    }
+
+    // Log controller status
+    RCLCPP_INFO(this->get_logger(), "Control loop: state=%.4f, setpoint=%.4f, control_effort=%.4f", current_state_,
+                current_setpoint_, control_effort);
+
+    // Publicar control effort
+    auto output_msg = std::make_unique<std_msgs::msg::Float64>();
+    output_msg->data = control_effort;
+    control_pub_->publish(std::move(output_msg));
+  }
+  else if (!auto_mode_)
+  {
+    RCLCPP_DEBUG(this->get_logger(), "PID controller is disabled, not calculating control");
+  }
+  else if (!has_received_setpoint_)
+  {
+    RCLCPP_DEBUG(this->get_logger(), "No setpoint received yet, not calculating control");
+  }
 }
 
 void PIDControllerNode::setpoint_callback(const std_msgs::msg::Float64::SharedPtr msg)
 {
+  has_received_setpoint_ = true;
+  RCLCPP_INFO(this->get_logger(), "Received setpoint value: %.4f", msg->data);
   if (current_setpoint_ != msg->data)
   {
     current_setpoint_ = msg->data;
     pid_controller_->set_setpoint(current_setpoint_);
-    has_received_setpoint_ = true;
-    RCLCPP_DEBUG(this->get_logger(), "Setpoint updated to %f", current_setpoint_);
+    RCLCPP_INFO(this->get_logger(), "Setpoint updated to %.4f", current_setpoint_);
+  }
+  else
+  {
+    RCLCPP_DEBUG(this->get_logger(), "Received same setpoint value: %.4f (not updating)", msg->data);
   }
 }
 
@@ -191,36 +215,8 @@ void PIDControllerNode::pid_enable_callback(const std_msgs::msg::Bool::SharedPtr
 
 void PIDControllerNode::control_loop()
 {
-  if (!auto_mode_)
-  {
-    return;  // Don't update if in manual mode
-  }
-
-  if (!has_received_state_)
-  {
-    RCLCPP_DEBUG(this->get_logger(), "Waiting for state input...");
-    return;
-  }
-
-  if (!has_received_setpoint_)
-  {
-    RCLCPP_DEBUG(this->get_logger(), "Waiting for setpoint...");
-    return;
-  }
-
-  // Calculate control output
-  double control_effort = pid_controller_->update(current_state_);
-
-  // Apply reverse action if configured
-  if (reverse_action_)
-  {
-    control_effort = -control_effort;
-  }
-
-  // Publish control effort
-  auto msg = std::make_unique<std_msgs::msg::Float64>();
-  msg->data = control_effort;
-  control_pub_->publish(std::move(msg));
+  // Esta função não é mais utilizada, pois o controle agora é feito no callback do estado
+  // Mantida apenas por compatibilidade, mas não faz nada
 }
 
 rcl_interfaces::msg::SetParametersResult
@@ -282,15 +278,6 @@ PIDControllerNode::parameters_callback(const std::vector<rclcpp::Parameter>& par
       {
         reverse_action_ = param.as_bool();
         RCLCPP_INFO(this->get_logger(), "Reverse action %s", reverse_action_ ? "enabled" : "disabled");
-      }
-      else if (param.get_name() == "publish_rate")
-      {
-        double publish_rate = param.as_double();
-        // Update the timer period
-        timer_->cancel();
-        timer_ = this->create_wall_timer(std::chrono::milliseconds(static_cast<int>(1000.0 / publish_rate)),
-                                         std::bind(&PIDControllerNode::control_loop, this));
-        RCLCPP_INFO(this->get_logger(), "Updated publish rate to %.2f Hz", publish_rate);
       }
     }
   }
